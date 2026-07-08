@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>小账本 - 个人记账</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 主容器 -->
+    <div id="app">
+
+        <!-- ==================== 首页 ==================== -->
+        <div id="page-home" class="page active">
+            <div class="page-header">
+                <h1>📒 小账本</h1>
+                <span class="header-date" id="header-month"></span>
+            </div>
+
+            <!-- 本月支出卡片 -->
+            <div class="summary-card">
+                <div class="summary-label">本月支出</div>
+                <div class="summary-amount" id="monthly-total">¥ 0.00</div>
+            </div>
+
+            <!-- 今日支出 -->
+            <div class="today-card">
+                <span class="today-label">📌 今日支出</span>
+                <span class="today-amount" id="today-total">¥ 0.00</span>
+            </div>
+
+            <!-- 最近记录 -->
+            <div class="section">
+                <div class="section-title">📋 最近记录</div>
+                <div class="recent-list" id="recent-list">
+                    <div class="empty-state">
+                        <div class="empty-icon">📝</div>
+                        <div>还没有记账哦</div>
+                        <div class="empty-hint">点击下方 ✏️记账 开始吧！</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 记账页 ==================== -->
+        <div id="page-add" class="page">
+            <div class="page-header">
+                <h1>✏️ 记一笔</h1>
+            </div>
+
+            <!-- 金额输入 -->
+            <div class="amount-input-section">
+                <div class="amount-label">💰 金额（元）</div>
+                <div class="amount-display" id="amount-display">
+                    <span class="currency">¥</span>
+                    <span class="amount-value" id="amount-value">0</span>
+                    <span class="amount-decimal" id="amount-decimal">.00</span>
+                </div>
+                <input type="hidden" id="amount-hidden" value="0">
+            </div>
+
+            <!-- 自定义数字键盘 -->
+            <div class="numpad" id="numpad">
+                <div class="numpad-row">
+                    <button class="numpad-btn num-key" data-key="1">1</button>
+                    <button class="numpad-btn num-key" data-key="2">2</button>
+                    <button class="numpad-btn num-key" data-key="3">3</button>
+                </div>
+                <div class="numpad-row">
+                    <button class="numpad-btn num-key" data-key="4">4</button>
+                    <button class="numpad-btn num-key" data-key="5">5</button>
+                    <button class="numpad-btn num-key" data-key="6">6</button>
+                </div>
+                <div class="numpad-row">
+                    <button class="numpad-btn num-key" data-key="7">7</button>
+                    <button class="numpad-btn num-key" data-key="8">8</button>
+                    <button class="numpad-btn num-key" data-key="9">9</button>
+                </div>
+                <div class="numpad-row">
+                    <button class="numpad-btn num-key" data-key="0">0</button>
+                    <button class="numpad-btn num-key" data-key=".">.</button>
+                    <button class="numpad-btn numpad-del" data-key="del">⌫</button>
+                </div>
+            </div>
+
+            <!-- 分类选择 -->
+            <div class="category-section">
+                <div class="section-label">📂 选择分类</div>
+                <div class="category1-grid" id="category1-grid">
+                    <!-- JS动态生成 -->
+                </div>
+                <div class="category2-row" id="category2-row">
+                    <!-- JS动态生成，选中一级分类后显示 -->
+                </div>
+            </div>
+
+            <!-- 日期 -->
+            <div class="date-section">
+                <span class="section-label">📅 日期</span>
+                <input type="date" id="expense-date" class="date-input">
+            </div>
+
+            <!-- 备注 -->
+            <div class="note-section">
+                <span class="section-label">📝 备注（可选）</span>
+                <input type="text" id="expense-note" class="note-input" placeholder="例如：公司楼下食堂" maxlength="50">
+            </div>
+
+            <!-- 保存按钮 -->
+            <button class="save-btn" id="save-btn">💾 保存记录</button>
+        </div>
+
+        <!-- ==================== 账单页 ==================== -->
+        <div id="page-records" class="page">
+            <div class="page-header">
+                <h1>📋 账单记录</h1>
+            </div>
+
+            <!-- 月份切换 -->
+            <div class="month-switcher">
+                <button class="month-arrow" id="month-prev">◀</button>
+                <span class="month-label" id="records-month">2026年7月</span>
+                <button class="month-arrow" id="month-next">▶</button>
+            </div>
+
+            <!-- 分类筛选 -->
+            <div class="filter-row" id="filter-row">
+                <!-- JS动态生成 -->
+            </div>
+
+            <!-- 记录列表 -->
+            <div class="records-list" id="records-list">
+                <div class="empty-state">
+                    <div class="empty-icon">📭</div>
+                    <div>该月份没有记录</div>
+                </div>
+            </div>
+
+            <!-- 当月合计 -->
+            <div class="records-total" id="records-total">
+                本月合计：<span id="records-total-amount">¥ 0.00</span>
+            </div>
+        </div>
+
+        <!-- ==================== 统计页 ==================== -->
+        <div id="page-stats" class="page">
+            <div class="page-header">
+                <h1>📊 支出统计</h1>
+                <span class="header-date" id="stats-month"></span>
+            </div>
+
+            <!-- 本月总支出 -->
+            <div class="summary-card small">
+                <div class="summary-label">本月总支出</div>
+                <div class="summary-amount" id="stats-total">¥ 0.00</div>
+            </div>
+
+            <!-- 饼图 -->
+            <div class="chart-section">
+                <div class="section-title">分类占比</div>
+                <div class="chart-container" id="chart-container">
+                    <canvas id="pie-chart" width="280" height="280"></canvas>
+                    <div class="chart-legend" id="chart-legend">
+                        <!-- JS动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分类排行 -->
+            <div class="ranking-section">
+                <div class="section-title">🏆 分类排行</div>
+                <div class="ranking-list" id="ranking-list">
+                    <!-- JS动态生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 底部导航 ==================== -->
+        <div class="bottom-nav">
+            <button class="nav-btn active" data-page="home">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-text">首页</span>
+            </button>
+            <button class="nav-btn" data-page="add">
+                <span class="nav-icon">✏️</span>
+                <span class="nav-text">记账</span>
+            </button>
+            <button class="nav-btn" data-page="records">
+                <span class="nav-icon">📋</span>
+                <span class="nav-text">账单</span>
+            </button>
+            <button class="nav-btn" data-page="stats">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">统计</span>
+            </button>
+        </div>
+
+        <!-- ==================== 全局组件 ==================== -->
+        <!-- Toast提示 -->
+        <div class="toast" id="toast"></div>
+
+        <!-- 确认对话框 -->
+        <div class="confirm-overlay" id="confirm-overlay">
+            <div class="confirm-box">
+                <div class="confirm-message" id="confirm-message">确定要删除这条记录吗？</div>
+                <div class="confirm-buttons">
+                    <button class="confirm-btn cancel" id="confirm-cancel">取消</button>
+                    <button class="confirm-btn ok" id="confirm-ok">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
