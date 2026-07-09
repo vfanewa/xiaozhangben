@@ -290,6 +290,11 @@ function showConfirm(message) {
 // ==================== 页面导航 ====================
 
 function switchPage(pageName) {
+    // 离开游戏页时停止游戏
+    if (state.currentPage === 'game' && pageName !== 'game') {
+        stopSnakeGame();
+    }
+
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(`page-${pageName}`).classList.add('active');
 
@@ -303,6 +308,7 @@ function switchPage(pageName) {
         case 'add': resetAddPage(); break;
         case 'records': renderRecords(); break;
         case 'stats': renderStats(); break;
+        case 'game': initSnakeGame(); break;
     }
 }
 
@@ -865,6 +871,379 @@ function drawPieChart(canvas, sortedData, total, type, legendEl) {
     ctx.font = 'bold 16px -apple-system, sans-serif';
     ctx.fillText(formatAmount(total), cx, cy + 12);
 }
+
+// ==================== 贪吃蛇游戏 ====================
+
+const SnakeGame = {
+    canvas: null,
+    ctx: null,
+    gridCount: 20,           // 20×20 网格
+    cellSize: 16,            // 每格像素（动态计算）
+    snake: [],               // [{x, y}, ...] 头部在前
+    food: { x: 0, y: 0 },
+    direction: { dx: 1, dy: 0 },
+    nextDirection: { dx: 1, dy: 0 },
+    score: 0,
+    bestScore: 0,
+    gameLoopId: null,
+    speed: 130,              // 毫秒/步
+    isRunning: false,
+    isPaused: false,
+    touchStartX: 0,
+    touchStartY: 0,
+    animationId: null,       // 用于绘制动画
+
+    /** 初始化画布大小和触摸事件 */
+    init() {
+        this.canvas = document.getElementById('snake-canvas');
+        this.ctx = this.canvas.getContext('2d');
+
+        // 根据容器宽度动态计算画布大小（正方形）
+        const container = document.querySelector('.game-container');
+        const containerWidth = container.clientWidth - 20; // 减去 padding
+        const size = Math.min(containerWidth, 380);
+        this.canvas.width = size;
+        this.canvas.height = size;
+        this.cellSize = size / this.gridCount;
+
+        // 加载最高分
+        const saved = localStorage.getItem('snake_best_score');
+        this.bestScore = saved ? parseInt(saved) : 0;
+
+        this.bindTouchEvents();
+    },
+
+    /** 绑定触摸滑动事件 */
+    bindTouchEvents() {
+        const canvas = this.canvas;
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            this.touchStartX = touch.clientX;
+            this.touchStartY = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (!this.isRunning || this.isPaused) return;
+            const touch = e.changedTouches[0];
+            const dx = touch.clientX - this.touchStartX;
+            const dy = touch.clientY - this.touchStartY;
+            const absDx = Math.abs(dx);
+            const absDy = Math.abs(dy);
+
+            if (Math.max(absDx, absDy) < 20) return; // 滑动距离太短，忽略
+
+            if (absDx > absDy) {
+                // 水平滑动
+                this.setDirection(dx > 0 ? 1 : -1, 0);
+            } else {
+                // 垂直滑动
+                this.setDirection(0, dy > 0 ? 1 : -1);
+            }
+        }, { passive: false });
+    },
+
+    /** 开始/重新开始游戏 */
+    start() {
+        this.reset();
+        this.isRunning = true;
+        this.isPaused = false;
+        document.getElementById('game-over-overlay').classList.remove('show');
+
+        if (this.gameLoopId) clearInterval(this.gameLoopId);
+        this.gameLoopId = setInterval(() => this.update(), this.speed);
+
+        this.draw();
+    },
+
+    /** 重置状态 */
+    reset() {
+        this.direction = { dx: 1, dy: 0 };
+        this.nextDirection = { dx: 1, dy: 0 };
+        this.score = 0;
+        this.speed = 130;
+
+        // 蛇初始位置：中间偏左，长度 3
+        const mid = Math.floor(this.gridCount / 2);
+        this.snake = [
+            { x: mid, y: mid },
+            { x: mid - 1, y: mid },
+            { x: mid - 2, y: mid },
+        ];
+
+        this.spawnFood();
+        document.getElementById('snake-score').textContent = '0';
+    },
+
+    /** 停止游戏 */
+    stop() {
+        this.isRunning = false;
+        if (this.gameLoopId) {
+            clearInterval(this.gameLoopId);
+            this.gameLoopId = null;
+        }
+    },
+
+    /** 设置方向（防止反向） */
+    setDirection(dx, dy) {
+        // 不允许反向（不能 180° 掉头）
+        if (dx + this.direction.dx === 0 && dy + this.direction.dy === 0) return;
+        this.nextDirection = { dx, dy };
+    },
+
+    /** 生成食物（避开蛇身） */
+    spawnFood() {
+        const occupied = new Set(this.snake.map(s => `${s.x},${s.y}`));
+        const empty = [];
+        for (let x = 0; x < this.gridCount; x++) {
+            for (let y = 0; y < this.gridCount; y++) {
+                if (!occupied.has(`${x},${y}`)) {
+                    empty.push({ x, y });
+                }
+            }
+        }
+        if (empty.length > 0) {
+            this.food = empty[Math.floor(Math.random() * empty.length)];
+        }
+    },
+
+    /** 每步更新游戏状态 */
+    update() {
+        if (this.isPaused) return;
+
+        // 应用缓冲的方向
+        this.direction = { ...this.nextDirection };
+
+        // 新头部
+        const head = this.snake[0];
+        const newHead = {
+            x: head.x + this.direction.dx,
+            y: head.y + this.direction.dy,
+        };
+
+        // 检查撞墙
+        if (newHead.x < 0 || newHead.x >= this.gridCount ||
+            newHead.y < 0 || newHead.y >= this.gridCount) {
+            return this.handleGameOver();
+        }
+
+        // 检查撞自己
+        if (this.snake.some(s => s.x === newHead.x && s.y === newHead.y)) {
+            return this.handleGameOver();
+        }
+
+        // 添加新头部
+        this.snake.unshift(newHead);
+
+        // 检查是否吃到食物
+        if (newHead.x === this.food.x && newHead.y === this.food.y) {
+            this.score += 10;
+            document.getElementById('snake-score').textContent = this.score;
+            this.spawnFood();
+            // 每吃 5 个食物加速
+            if (this.score % 50 === 0 && this.speed > 50) {
+                this.speed -= 10;
+                clearInterval(this.gameLoopId);
+                this.gameLoopId = setInterval(() => this.update(), this.speed);
+            }
+        } else {
+            // 移除尾巴
+            this.snake.pop();
+        }
+
+        this.draw();
+    },
+
+    /** 游戏结束处理 */
+    handleGameOver() {
+        this.stop();
+
+        // 更新最高分
+        if (this.score > this.bestScore) {
+            this.bestScore = this.score;
+            localStorage.setItem('snake_best_score', this.bestScore);
+        }
+
+        document.getElementById('game-over-score').textContent = this.score + ' 分';
+        document.getElementById('game-over-overlay').classList.add('show');
+    },
+
+    /** 绘制画布 */
+    draw() {
+        const { ctx, canvas, cellSize, gridCount, snake, food } = this;
+
+        // 背景
+        ctx.fillStyle = '#16213e';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 网格线（淡色）
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= gridCount; i++) {
+            const pos = i * cellSize;
+            ctx.beginPath();
+            ctx.moveTo(pos, 0);
+            ctx.lineTo(pos, canvas.height);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, pos);
+            ctx.lineTo(canvas.width, pos);
+            ctx.stroke();
+        }
+
+        // 绘制食物（带脉冲效果的红苹果）
+        const foodX = food.x * cellSize + cellSize / 2;
+        const foodY = food.y * cellSize + cellSize / 2;
+        const foodR = cellSize * 0.4;
+
+        // 光晕
+        ctx.beginPath();
+        ctx.arc(foodX, foodY, foodR + 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
+        ctx.fill();
+
+        // 食物主体
+        ctx.beginPath();
+        ctx.arc(foodX, foodY, foodR, 0, Math.PI * 2);
+        ctx.fillStyle = '#FF3B30';
+        ctx.fill();
+
+        // 高光
+        ctx.beginPath();
+        ctx.arc(foodX - foodR * 0.25, foodY - foodR * 0.25, foodR * 0.35, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.fill();
+
+        // 绘制蛇
+        snake.forEach((seg, i) => {
+            const x = seg.x * cellSize;
+            const y = seg.y * cellSize;
+            const pad = 1; // 间距让蛇身看起来有分隔
+
+            if (i === 0) {
+                // 蛇头 - 稍大且圆角
+                const headR = cellSize / 2 - pad;
+                ctx.beginPath();
+                ctx.arc(x + cellSize / 2, y + cellSize / 2, headR, 0, Math.PI * 2);
+                ctx.fillStyle = '#4CAF50';
+                ctx.fill();
+                ctx.strokeStyle = '#388E3C';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 眼睛
+                const eyeR = cellSize * 0.12;
+                let eye1X, eye1Y, eye2X, eye2Y;
+                const cx = x + cellSize / 2;
+                const cy = y + cellSize / 2;
+                const offset = cellSize * 0.22;
+
+                if (this.direction.dx === 1) { // 向右
+                    eye1X = cx + offset; eye1Y = cy - offset;
+                    eye2X = cx + offset; eye2Y = cy + offset;
+                } else if (this.direction.dx === -1) { // 向左
+                    eye1X = cx - offset; eye1Y = cy - offset;
+                    eye2X = cx - offset; eye2Y = cy + offset;
+                } else if (this.direction.dy === -1) { // 向上
+                    eye1X = cx - offset; eye1Y = cy - offset;
+                    eye2X = cx + offset; eye2Y = cy - offset;
+                } else { // 向下
+                    eye1X = cx - offset; eye1Y = cy + offset;
+                    eye2X = cx + offset; eye2Y = cy + offset;
+                }
+
+                ctx.beginPath();
+                ctx.arc(eye1X, eye1Y, eyeR, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(eye2X, eye2Y, eyeR, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+            } else {
+                // 蛇身 - 渐变颜色
+                const ratio = i / Math.max(snake.length - 1, 1);
+                const g = Math.floor(180 - ratio * 80);
+                const r = Math.floor(30 + ratio * 30);
+                ctx.fillStyle = `rgb(${r}, ${g}, 80)`;
+
+                const bodyR = cellSize / 2 - pad - 1;
+                ctx.beginPath();
+                ctx.arc(x + cellSize / 2, y + cellSize / 2, bodyR, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+
+        // 暂停提示
+        if (this.isPaused) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 24px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⏸️ 已暂停', canvas.width / 2, canvas.height / 2);
+            ctx.textAlign = 'start';
+        }
+    },
+};
+
+/** 贪吃蛇页面初始化（每次进入游戏Tab时调用） */
+function initSnakeGame() {
+    SnakeGame.init();
+    SnakeGame.start();
+}
+
+/** 贪吃蛇页面清理（离开时调用） */
+function stopSnakeGame() {
+    SnakeGame.stop();
+}
+
+// ==================== 贪吃蛇键盘事件 ====================
+
+document.addEventListener('keydown', (evt) => {
+    if (state.currentPage !== 'game' || !SnakeGame.isRunning) return;
+
+    const key = evt.key.toLowerCase();
+
+    switch (key) {
+        case 'arrowup':
+        case 'w':
+            evt.preventDefault();
+            SnakeGame.setDirection(0, -1);
+            break;
+        case 'arrowdown':
+        case 's':
+            evt.preventDefault();
+            SnakeGame.setDirection(0, 1);
+            break;
+        case 'arrowleft':
+        case 'a':
+            evt.preventDefault();
+            SnakeGame.setDirection(-1, 0);
+            break;
+        case 'arrowright':
+        case 'd':
+            evt.preventDefault();
+            SnakeGame.setDirection(1, 0);
+            break;
+        case ' ':
+            // 空格暂停/继续
+            evt.preventDefault();
+            if (SnakeGame.isRunning) {
+                SnakeGame.isPaused = !SnakeGame.isPaused;
+                SnakeGame.draw();
+            }
+            break;
+    }
+});
+
+// 重新开始按钮事件
+document.getElementById('game-restart-btn').addEventListener('click', () => {
+    SnakeGame.start();
+});
 
 // ==================== 事件绑定 ====================
 
