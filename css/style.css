@@ -111,35 +111,46 @@ body {
 }
 
 /* ===== 摘要卡片 ===== */
-.summary-card {
-    background: linear-gradient(135deg, var(--primary), #66BB6A);
-    color: #fff;
+/* 收支概览双卡片 */
+.summary-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.summary-item {
+    flex: 1;
     border-radius: var(--radius);
-    padding: 24px 20px;
+    padding: 16px;
     text-align: center;
-    margin-bottom: 12px;
-    box-shadow: 0 4px 16px rgba(76, 175, 80, 0.3);
+    box-shadow: var(--shadow);
 }
 
-.summary-card.small {
-    padding: 16px 20px;
-    margin-bottom: 16px;
+.income-card {
+    background: linear-gradient(135deg, #2196F3, #64B5F6);
+    color: #fff;
 }
 
-.summary-label {
-    font-size: 14px;
+.expense-card {
+    background: linear-gradient(135deg, #F44336, #EF5350);
+    color: #fff;
+}
+
+.summary-item .summary-label {
+    font-size: 13px;
     opacity: 0.9;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    color: rgba(255,255,255,0.9);
 }
 
-.summary-amount {
-    font-size: 36px;
-    font-weight: 800;
-    letter-spacing: 1px;
+.summary-value {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
 }
 
-/* ===== 今日支出卡片 ===== */
-.today-card {
+/* 结余卡片 */
+.balance-card {
     background: var(--card);
     border-radius: var(--radius);
     padding: 14px 20px;
@@ -150,17 +161,50 @@ body {
     box-shadow: var(--shadow);
 }
 
-.today-label {
+.balance-label {
     font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.summary-balance {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.summary-balance.positive { color: #4CAF50; }
+.summary-balance.negative { color: #F44336; }
+
+/* 今日收支 */
+.today-row {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+}
+
+.today-label {
+    font-size: 14px;
     color: var(--text-secondary);
     font-weight: 500;
 }
 
-.today-amount {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--danger);
+.today-income {
+    font-size: 14px;
+    font-weight: 600;
+    color: #4CAF50;
 }
+
+.today-expense {
+    font-size: 14px;
+    font-weight: 600;
+    color: #F44336;
+}
+
 
 /* ===== 通用区块 ===== */
 .section {
@@ -259,10 +303,12 @@ body {
 .record-amount {
     font-size: 16px;
     font-weight: 700;
-    color: var(--danger);
     flex-shrink: 0;
     margin-left: 8px;
 }
+
+.record-amount.expense { color: #F44336; }
+.record-amount.income { color: #4CAF50; }
 
 .record-delete {
     width: 32px;
@@ -380,6 +426,46 @@ body {
 
 .numpad-del:active {
     background: #FFE0B2;
+}
+
+/* 收入/支出类型切换 */
+.type-toggle-section {
+    margin-bottom: 16px;
+}
+
+.type-toggle {
+    display: flex;
+    gap: 10px;
+}
+
+.type-toggle-btn {
+    flex: 1;
+    height: 44px;
+    border: 2px solid var(--border);
+    background: var(--card);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.type-toggle-btn:active {
+    transform: scale(0.97);
+}
+
+.type-toggle-btn.expense.active {
+    border-color: #F44336;
+    background: #FFEBEE;
+    color: #F44336;
+}
+
+.type-toggle-btn.income.active {
+    border-color: #4CAF50;
+    background: #E8F5E9;
+    color: #4CAF50;
 }
 
 /* 分类选择 */
@@ -535,6 +621,18 @@ body {
     cursor: not-allowed;
 }
 
+.save-btn.income-btn {
+    background: linear-gradient(135deg, #2196F3, #64B5F6);
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+.save-hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 8px;
+}
+
 /* ===== 账单页 ===== */
 
 /* 月份切换 */
@@ -628,7 +726,7 @@ body {
 .records-total {
     text-align: center;
     padding: 12px;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text);
     background: var(--card);
@@ -638,12 +736,65 @@ body {
     bottom: 0;
 }
 
-.records-total span {
-    color: var(--danger);
-    font-size: 18px;
+/* ===== 统计页 ===== */
+
+/* 统计页概览 */
+.stats-overview {
+    margin-bottom: 16px;
 }
 
-/* ===== 统计页 ===== */
+.stats-overview-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.stats-overview-item {
+    flex: 1;
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    box-shadow: var(--shadow);
+}
+
+.income-bg {
+    background: linear-gradient(135deg, #2196F3, #64B5F6);
+    color: #fff;
+}
+
+.expense-bg {
+    background: linear-gradient(135deg, #F44336, #EF5350);
+    color: #fff;
+}
+
+.stats-overview-label {
+    font-size: 13px;
+    opacity: 0.9;
+    margin-bottom: 6px;
+}
+
+.stats-overview-value {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.stats-balance {
+    text-align: center;
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: var(--shadow);
+}
+
+.stats-balance-value.positive { color: #4CAF50; }
+.stats-balance-value.negative { color: #F44336; }
+
+/* 排行榜列表（移到chart-section内） */
+.ranking-list {
+    margin-top: 12px;
+}
 
 /* 饼图区域 */
 .chart-section {
@@ -699,16 +850,6 @@ body {
 }
 
 /* 排行榜 */
-.ranking-section {
-    background: var(--card);
-    border-radius: var(--radius);
-    padding: 16px;
-    box-shadow: var(--shadow);
-}
-
-.ranking-list {
-    margin-top: 8px;
-}
 
 .ranking-item {
     display: flex;

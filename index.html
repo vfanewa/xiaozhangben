@@ -17,16 +17,29 @@
                 <span class="header-date" id="header-month"></span>
             </div>
 
-            <!-- 本月支出卡片 -->
-            <div class="summary-card">
-                <div class="summary-label">本月支出</div>
-                <div class="summary-amount" id="monthly-total">¥ 0.00</div>
+            <!-- 本月收支概览 -->
+            <div class="summary-row">
+                <div class="summary-item income-card">
+                    <div class="summary-label">📈 本月收入</div>
+                    <div class="summary-value income-val" id="monthly-income">¥ 0.00</div>
+                </div>
+                <div class="summary-item expense-card">
+                    <div class="summary-label">📉 本月支出</div>
+                    <div class="summary-value expense-val" id="monthly-expense">¥ 0.00</div>
+                </div>
             </div>
 
-            <!-- 今日支出 -->
-            <div class="today-card">
-                <span class="today-label">📌 今日支出</span>
-                <span class="today-amount" id="today-total">¥ 0.00</span>
+            <!-- 本月结余 -->
+            <div class="balance-card">
+                <span class="balance-label">💰 本月结余</span>
+                <span class="summary-balance positive" id="monthly-balance">¥ 0.00</span>
+            </div>
+
+            <!-- 今日收支 -->
+            <div class="today-row">
+                <span class="today-label">📌 今日</span>
+                <span class="today-income" id="today-income">收 ¥ 0.00</span>
+                <span class="today-expense" id="today-expense">支 ¥ 0.00</span>
             </div>
 
             <!-- 最近记录 -->
@@ -83,9 +96,18 @@
                 </div>
             </div>
 
+            <!-- 收入/支出类型切换 -->
+            <div class="type-toggle-section">
+                <div class="section-label">📂 类型</div>
+                <div class="type-toggle">
+                    <button class="type-toggle-btn expense active" id="type-toggle-expense">🔴 支出</button>
+                    <button class="type-toggle-btn income" id="type-toggle-income">🟢 收入</button>
+                </div>
+            </div>
+
             <!-- 分类选择 -->
             <div class="category-section">
-                <div class="section-label">📂 选择分类</div>
+                <div class="section-label">📂 分类</div>
                 <div class="category1-grid" id="category1-grid">
                     <!-- JS动态生成 -->
                 </div>
@@ -108,6 +130,7 @@
 
             <!-- 保存按钮 -->
             <button class="save-btn" id="save-btn">💾 保存记录</button>
+            <div class="save-hint" id="save-hint">请填写金额并选择分类</div>
         </div>
 
         <!-- ==================== 账单页 ==================== -->
@@ -145,33 +168,45 @@
         <!-- ==================== 统计页 ==================== -->
         <div id="page-stats" class="page">
             <div class="page-header">
-                <h1>📊 支出统计</h1>
+                <h1>📊 收支统计</h1>
                 <span class="header-date" id="stats-month"></span>
             </div>
 
-            <!-- 本月总支出 -->
-            <div class="summary-card small">
-                <div class="summary-label">本月总支出</div>
-                <div class="summary-amount" id="stats-total">¥ 0.00</div>
-            </div>
-
-            <!-- 饼图 -->
-            <div class="chart-section">
-                <div class="section-title">分类占比</div>
-                <div class="chart-container" id="chart-container">
-                    <canvas id="pie-chart" width="280" height="280"></canvas>
-                    <div class="chart-legend" id="chart-legend">
-                        <!-- JS动态生成 -->
+            <!-- 本月收支概览 -->
+            <div class="stats-overview">
+                <div class="stats-overview-row">
+                    <div class="stats-overview-item income-bg">
+                        <div class="stats-overview-label">📈 收入</div>
+                        <div class="stats-overview-value" id="stats-income">¥ 0.00</div>
+                    </div>
+                    <div class="stats-overview-item expense-bg">
+                        <div class="stats-overview-label">📉 支出</div>
+                        <div class="stats-overview-value" id="stats-expense">¥ 0.00</div>
                     </div>
                 </div>
+                <div class="stats-balance">
+                    本月结余：<span class="stats-balance-value positive" id="stats-balance">¥ 0.00</span>
+                </div>
             </div>
 
-            <!-- 分类排行 -->
-            <div class="ranking-section">
-                <div class="section-title">🏆 分类排行</div>
-                <div class="ranking-list" id="ranking-list">
-                    <!-- JS动态生成 -->
+            <!-- 支出分类占比 -->
+            <div class="chart-section">
+                <div class="section-title">📉 支出分类占比</div>
+                <div class="chart-container" id="expense-chart-container">
+                    <canvas width="280" height="280"></canvas>
+                    <div class="chart-legend" id="expense-legend"></div>
                 </div>
+                <div class="ranking-list" id="expense-ranking"></div>
+            </div>
+
+            <!-- 收入分类占比 -->
+            <div class="chart-section">
+                <div class="section-title">📈 收入分类占比</div>
+                <div class="chart-container" id="income-chart-container">
+                    <canvas width="280" height="280"></canvas>
+                    <div class="chart-legend" id="income-legend"></div>
+                </div>
+                <div class="ranking-list" id="income-ranking"></div>
             </div>
         </div>
 

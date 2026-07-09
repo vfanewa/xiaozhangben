@@ -2,10 +2,11 @@
    小账本 - 应用逻辑
    HTML + CSS + JS 纯前端实现
    数据存储在 localStorage
+   支持支出和收入两种记录类型
    ========================================== */
 
 // ==================== 分类数据 ====================
-const CATEGORIES = [
+const EXPENSE_CATEGORIES = [
     {
         id: 'food', name: '餐饮', icon: '🍽️',
         sub: ['早餐', '午餐', '晚餐', '零食饮料', '外卖', '聚餐', '买菜']
@@ -56,19 +57,60 @@ const CATEGORIES = [
     }
 ];
 
+const INCOME_CATEGORIES = [
+    {
+        id: 'salary', name: '工资收入', icon: '💼',
+        sub: ['月薪', '年终奖', '加班费', '奖金', '补贴']
+    },
+    {
+        id: 'gift', name: '红包礼金', icon: '🧧',
+        sub: ['节日红包', '生日红包', '婚礼礼金', '压岁钱']
+    },
+    {
+        id: 'investment', name: '投资理财', icon: '💰',
+        sub: ['利息收入', '股息分红', '基金收益', '股票收益', '理财产品']
+    },
+    {
+        id: 'refund', name: '退款报销', icon: '🔄',
+        sub: ['购物退款', '报销款', '押金退回']
+    },
+    {
+        id: 'rental', name: '租赁收入', icon: '🏠',
+        sub: ['房租收入', '设备租赁']
+    },
+    {
+        id: 'sidejob', name: '兼职副业', icon: '🛠️',
+        sub: ['兼职', '自由职业', '咨询费', '稿费']
+    },
+    {
+        id: 'other_income', name: '其他收入', icon: '📦',
+        sub: ['其他收入']
+    }
+];
+
+// 向后兼容：旧变量名
+const CATEGORIES = EXPENSE_CATEGORIES;
+
 // 饼图颜色方案
 const CHART_COLORS = [
     '#4CAF50', '#FF9800', '#2196F3', '#E91E63', '#9C27B0',
     '#00BCD4', '#FF5722', '#795548', '#607D8B', '#CDDC39',
     '#3F51B5', '#9E9E9E'
 ];
+const INCOME_CHART_COLORS = [
+    '#2196F3', '#4CAF50', '#FF9800', '#00BCD4', '#9C27B0',
+    '#3F51B5', '#E91E63', '#FF5722', '#795548', '#607D8B',
+    '#CDDC39', '#9E9E9E'
+];
 
 // ==================== 应用状态 ====================
-const STORAGE_KEY = 'xiaozhangben_expenses';
+const STORAGE_KEY = 'xiaozhangben_records';
+const OLD_STORAGE_KEY = 'xiaozhangben_expenses';
 
 let state = {
     currentPage: 'home',
     // 记账页临时状态
+    addType: 'expense',      // 'expense' | 'income'
     addAmount: '0',
     addCategory1: null,     // 选中的一级分类 index
     addCategory2: null,     // 选中的二级分类 name
@@ -81,99 +123,135 @@ let state = {
 
 // ==================== 数据层 ====================
 
-/** 从 localStorage 加载所有支出记录 */
-function loadExpenses() {
+/** 尝试从旧 key 迁移数据 */
+function migrateOldData() {
+    try {
+        const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
+        if (oldRaw) {
+            const oldRecords = JSON.parse(oldRaw);
+            oldRecords.forEach(r => { if (!r.type) r.type = 'expense'; });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(oldRecords));
+            localStorage.removeItem(OLD_STORAGE_KEY);
+            return oldRecords;
+        }
+    } catch (e) { /* 忽略迁移错误 */ }
+    return null;
+}
+
+migrateOldData();
+
+/** 从 localStorage 加载所有记录 */
+function loadRecords() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
+        const records = raw ? JSON.parse(raw) : [];
+        // 向后兼容：旧数据没有 type 字段，默认设为 'expense'
+        let migrated = false;
+        records.forEach(r => {
+            if (!r.type) { r.type = 'expense'; migrated = true; }
+        });
+        if (migrated) {
+            saveRecordsRaw(records);
+        }
+        return records;
     } catch (e) {
         console.error('数据加载失败:', e);
         return [];
     }
 }
 
-/** 保存所有支出记录到 localStorage */
-function saveExpenses(expenses) {
+/** 保存所有记录到 localStorage（不触发额外操作） */
+function saveRecordsRaw(records) {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
     } catch (e) {
         console.error('数据保存失败:', e);
         showToast('⚠️ 保存失败，请检查浏览器存储空间');
     }
 }
 
-/** 添加一条支出记录 */
-function addExpense(amount, category1, category2, date, note) {
-    const expenses = loadExpenses();
+/** 添加一条记录 */
+function addRecord(type, amount, category1, category2, date, note) {
+    const records = loadRecords();
     const now = new Date();
     const record = {
         id: generateId(),
+        type: type,                  // 'expense' | 'income'
         amount: parseFloat(amount),
-        category1: category1,        // 一级分类名称
-        category2: category2,        // 二级分类名称
-        date: date,                  // 'YYYY-MM-DD'
+        category1: category1,
+        category2: category2,
+        date: date,
         time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
         note: note || '',
         createdAt: now.toISOString(),
     };
-    expenses.unshift(record); // 新记录插入最前面
-    saveExpenses(expenses);
+    records.unshift(record);
+    saveRecordsRaw(records);
     return record;
 }
 
-/** 删除一条支出记录 */
-function deleteExpense(id) {
-    const expenses = loadExpenses();
-    const filtered = expenses.filter(e => e.id !== id);
-    saveExpenses(filtered);
+/** 删除一条记录 */
+function deleteRecord(id) {
+    const records = loadRecords();
+    const filtered = records.filter(e => e.id !== id);
+    saveRecordsRaw(filtered);
 }
+
+// 向后兼容：旧函数名
+function loadExpenses() { return loadRecords(); }
+function deleteExpense(id) { deleteRecord(id); }
 
 // ==================== 工具函数 ====================
 
-/** 生成唯一ID */
 function generateId() {
     const ts = Date.now().toString(36);
     const rand = Math.random().toString(36).substring(2, 8);
     return `${ts}_${rand}`;
 }
 
-/** 格式化金额为显示字符串 */
 function formatAmount(amount) {
-    return '¥ ' + amount.toFixed(2);
+    return '¥ ' + Math.abs(amount).toFixed(2);
 }
 
-/** 获取当前月份键 'YYYY-MM' */
+function formatAmountSigned(amount, type) {
+    const sign = type === 'income' ? '+' : '-';
+    return sign + '¥ ' + Math.abs(amount).toFixed(2);
+}
+
 function getMonthKey(date) {
     const d = date || new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/** 获取今日日期键 'YYYY-MM-DD' */
 function getTodayKey() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 格式化月份显示 'YYYY年M月' */
 function formatMonth(monthKey) {
     const [y, m] = monthKey.split('-');
     return `${y}年${parseInt(m)}月`;
 }
 
-/** 格式化日期显示 'M月D日 周X' */
 function formatDate(dateStr) {
     const d = new Date(dateStr);
     const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     return `${d.getMonth() + 1}月${d.getDate()}日 ${weekDays[d.getDay()]}`;
 }
 
-/** 获取一级分类的图标 */
 function getCategoryIcon(category1Name) {
-    const cat = CATEGORIES.find(c => c.name === category1Name);
+    let cat = EXPENSE_CATEGORIES.find(c => c.name === category1Name);
+    if (cat) return cat.icon;
+    cat = INCOME_CATEGORIES.find(c => c.name === category1Name);
     return cat ? cat.icon : '📦';
 }
 
-/** Toast 提示 */
+function getCategories(type) {
+    return type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+}
+
+// ==================== Toast & 对话框 ====================
+
 let toastTimer = null;
 function showToast(message) {
     const toast = document.getElementById('toast');
@@ -185,7 +263,6 @@ function showToast(message) {
     }, 1500);
 }
 
-/** 确认对话框 */
 function showConfirm(message) {
     return new Promise((resolve) => {
         const overlay = document.getElementById('confirm-overlay');
@@ -202,15 +279,8 @@ function showConfirm(message) {
             okBtn.removeEventListener('click', onOk);
         }
 
-        function onCancel() {
-            cleanup();
-            resolve(false);
-        }
-
-        function onOk() {
-            cleanup();
-            resolve(true);
-        }
+        function onCancel() { cleanup(); resolve(false); }
+        function onOk() { cleanup(); resolve(true); }
 
         cancelBtn.addEventListener('click', onCancel);
         okBtn.addEventListener('click', onOk);
@@ -220,30 +290,19 @@ function showConfirm(message) {
 // ==================== 页面导航 ====================
 
 function switchPage(pageName) {
-    // 更新页面显示
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(`page-${pageName}`).classList.add('active');
 
-    // 更新底部导航
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelector(`.nav-btn[data-page="${pageName}"]`).classList.add('active');
 
     state.currentPage = pageName;
 
-    // 根据页面刷新数据
     switch (pageName) {
-        case 'home':
-            renderHome();
-            break;
-        case 'add':
-            resetAddPage();
-            break;
-        case 'records':
-            renderRecords();
-            break;
-        case 'stats':
-            renderStats();
-            break;
+        case 'home': renderHome(); break;
+        case 'add': resetAddPage(); break;
+        case 'records': renderRecords(); break;
+        case 'stats': renderStats(); break;
     }
 }
 
@@ -253,24 +312,34 @@ function renderHome() {
     const now = new Date();
     const monthKey = getMonthKey(now);
     const todayKey = getTodayKey();
-    const expenses = loadExpenses();
+    const records = loadRecords();
 
     // 更新头部月份
     document.getElementById('header-month').textContent = formatMonth(monthKey);
 
-    // 计算本月总支出
-    const monthlyExpenses = expenses.filter(e => e.date.startsWith(monthKey));
-    const monthlyTotal = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0);
-    document.getElementById('monthly-total').textContent = formatAmount(monthlyTotal);
+    // 本月收入/支出
+    const monthlyIncome = records.filter(e => e.date.startsWith(monthKey) && e.type === 'income');
+    const monthlyExpense = records.filter(e => e.date.startsWith(monthKey) && e.type === 'expense');
+    const incomeTotal = monthlyIncome.reduce((sum, e) => sum + e.amount, 0);
+    const expenseTotal = monthlyExpense.reduce((sum, e) => sum + e.amount, 0);
+    const balance = incomeTotal - expenseTotal;
 
-    // 计算今日支出
-    const todayExpenses = expenses.filter(e => e.date === todayKey);
-    const todayTotal = todayExpenses.reduce((sum, e) => sum + e.amount, 0);
-    document.getElementById('today-total').textContent = formatAmount(todayTotal);
+    // 更新收入/支出/结余卡片
+    document.getElementById('monthly-income').textContent = formatAmount(incomeTotal);
+    document.getElementById('monthly-expense').textContent = formatAmount(expenseTotal);
+    const balanceEl = document.getElementById('monthly-balance');
+    balanceEl.textContent = (balance >= 0 ? '+' : '') + formatAmount(balance);
+    balanceEl.className = 'summary-balance ' + (balance >= 0 ? 'positive' : 'negative');
 
-    // 渲染最近5条记录
+    // 今日收入/支出
+    const todayIncome = records.filter(e => e.date === todayKey && e.type === 'income');
+    const todayExpense = records.filter(e => e.date === todayKey && e.type === 'expense');
+    document.getElementById('today-income').textContent = formatAmount(todayIncome.reduce((s, e) => s + e.amount, 0));
+    document.getElementById('today-expense').textContent = formatAmount(todayExpense.reduce((s, e) => s + e.amount, 0));
+
+    // 最近5条记录
     const recentList = document.getElementById('recent-list');
-    const recent = expenses.slice(0, 5);
+    const recent = records.slice(0, 5);
 
     if (recent.length === 0) {
         recentList.innerHTML = `
@@ -280,7 +349,11 @@ function renderHome() {
                 <div class="empty-hint">点击下方 ✏️记账 开始吧！</div>
             </div>`;
     } else {
-        recentList.innerHTML = recent.map(e => `
+        recentList.innerHTML = recent.map(e => {
+            const isIncome = e.type === 'income';
+            const sign = isIncome ? '+' : '-';
+            const cls = isIncome ? 'income' : 'expense';
+            return `
             <div class="record-item">
                 <div class="record-icon">${getCategoryIcon(e.category1)}</div>
                 <div class="record-info">
@@ -291,29 +364,60 @@ function renderHome() {
                         ${e.note ? `<span>${e.note}</span>` : ''}
                     </div>
                 </div>
-                <div class="record-amount">-${e.amount.toFixed(2)}</div>
-            </div>
-        `).join('');
+                <div class="record-amount ${cls}">${sign}${e.amount.toFixed(2)}</div>
+            </div>`;
+        }).join('');
     }
 }
 
 // ==================== 记账页 ====================
 
-/** 重置记账页到初始状态 */
 function resetAddPage() {
     state.addAmount = '0';
     state.addCategory1 = null;
     state.addCategory2 = null;
+    updateTypeToggleUI();
     updateAmountDisplay();
     renderCategory1Grid();
     renderCategory2Row();
     document.getElementById('expense-date').value = getTodayKey();
     document.getElementById('expense-note').value = '';
     document.getElementById('save-btn').disabled = true;
+}
+
+/** 切换收入/支出类型 */
+function switchAddType(type) {
+    state.addType = type;
+    state.addCategory1 = null;
+    state.addCategory2 = null;
+    updateTypeToggleUI();
+    renderCategory1Grid();
+    renderCategory2Row();
     updateSaveButton();
 }
 
-/** 更新金额显示 */
+/** 更新类型切换按钮 UI */
+function updateTypeToggleUI() {
+    const expenseBtn = document.getElementById('type-toggle-expense');
+    const incomeBtn = document.getElementById('type-toggle-income');
+    const saveBtn = document.getElementById('save-btn');
+
+    if (state.addType === 'expense') {
+        expenseBtn.classList.add('active');
+        incomeBtn.classList.remove('active');
+    } else {
+        incomeBtn.classList.add('active');
+        expenseBtn.classList.remove('active');
+    }
+
+    // 保存按钮颜色
+    if (state.addType === 'income') {
+        saveBtn.classList.add('income-btn');
+    } else {
+        saveBtn.classList.remove('income-btn');
+    }
+}
+
 function updateAmountDisplay() {
     const val = state.addAmount;
     const display = document.getElementById('amount-display');
@@ -336,11 +440,10 @@ function updateAmountDisplay() {
     }
 }
 
-/** 处理数字键盘输入 */
 function handleNumpadKey(key) {
     let current = state.addAmount;
-    const MAX_INT_LENGTH = 8; // 最大8位整数
-    const MAX_DECIMAL = 2;    // 最多2位小数
+    const MAX_INT_LENGTH = 8;
+    const MAX_DECIMAL = 2;
 
     if (key === 'del') {
         if (current.length <= 1 || current === '0') {
@@ -349,18 +452,16 @@ function handleNumpadKey(key) {
             current = current.substring(0, current.length - 1);
         }
     } else if (key === '.') {
-        if (current.includes('.')) return; // 已有小数点
+        if (current.includes('.')) return;
         if (current === '0' || current === '') {
             current = '0.';
         } else {
             current += '.';
         }
     } else {
-        // 数字键 0-9
         if (current === '0') {
             current = key;
         } else {
-            // 检查长度限制
             if (current.includes('.')) {
                 const decPart = current.split('.')[1];
                 if (decPart && decPart.length >= MAX_DECIMAL) return;
@@ -376,10 +477,11 @@ function handleNumpadKey(key) {
     updateSaveButton();
 }
 
-/** 渲染一级分类网格 */
 function renderCategory1Grid() {
     const grid = document.getElementById('category1-grid');
-    grid.innerHTML = CATEGORIES.map((cat, index) => `
+    const categories = getCategories(state.addType);
+
+    grid.innerHTML = categories.map((cat, index) => `
         <div class="category1-item${state.addCategory1 === index ? ' selected' : ''}"
              data-index="${index}">
             <span class="category1-icon">${cat.icon}</span>
@@ -387,31 +489,26 @@ function renderCategory1Grid() {
         </div>
     `).join('');
 
-    // 绑定点击事件
     grid.querySelectorAll('.category1-item').forEach(item => {
         item.addEventListener('click', () => {
-            const index = parseInt(item.dataset.index);
-            selectCategory1(index);
+            selectCategory1(parseInt(item.dataset.index));
         });
     });
 }
 
-/** 选择一级分类 */
 function selectCategory1(index) {
     if (state.addCategory1 === index) {
-        // 再次点击取消选中
         state.addCategory1 = null;
         state.addCategory2 = null;
     } else {
         state.addCategory1 = index;
-        state.addCategory2 = null; // 切换一级分类时重置二级
+        state.addCategory2 = null;
     }
     renderCategory1Grid();
     renderCategory2Row();
     updateSaveButton();
 }
 
-/** 渲染二级分类标签 */
 function renderCategory2Row() {
     const row = document.getElementById('category2-row');
 
@@ -420,22 +517,20 @@ function renderCategory2Row() {
         return;
     }
 
-    const cat = CATEGORIES[state.addCategory1];
+    const categories = getCategories(state.addType);
+    const cat = categories[state.addCategory1];
     row.innerHTML = cat.sub.map(sub => `
         <span class="category2-tag${state.addCategory2 === sub ? ' selected' : ''}"
               data-sub="${sub}">${sub}</span>
     `).join('');
 
-    // 绑定点击事件
     row.querySelectorAll('.category2-tag').forEach(tag => {
         tag.addEventListener('click', () => {
-            const sub = tag.dataset.sub;
-            selectCategory2(sub);
+            selectCategory2(tag.dataset.sub);
         });
     });
 }
 
-/** 选择二级分类 */
 function selectCategory2(subName) {
     if (state.addCategory2 === subName) {
         state.addCategory2 = null;
@@ -446,7 +541,6 @@ function selectCategory2(subName) {
     updateSaveButton();
 }
 
-/** 更新保存按钮状态 */
 function updateSaveButton() {
     const btn = document.getElementById('save-btn');
     const amount = parseFloat(state.addAmount);
@@ -454,7 +548,6 @@ function updateSaveButton() {
     btn.disabled = !valid;
 }
 
-/** 保存记录 */
 function handleSave() {
     const amount = parseFloat(state.addAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -466,45 +559,44 @@ function handleSave() {
         return;
     }
 
-    const category1 = CATEGORIES[state.addCategory1].name;
+    const categories = getCategories(state.addType);
+    const category1 = categories[state.addCategory1].name;
     const date = document.getElementById('expense-date').value || getTodayKey();
     const note = document.getElementById('expense-note').value.trim();
 
-    addExpense(amount.toFixed(2), category1, state.addCategory2, date, note);
+    addRecord(state.addType, amount.toFixed(2), category1, state.addCategory2, date, note);
 
-    showToast('✅ 记录成功！');
+    const label = state.addType === 'income' ? '收入' : '支出';
+    showToast(`✅ ${label}记录成功！`);
     resetAddPage();
 }
 
 // ==================== 账单页 ====================
 
-/** 初始化账单页月份 */
 function initRecordsMonth() {
     if (!state.recordsMonth) {
         state.recordsMonth = getMonthKey();
     }
 }
 
-/** 渲染账单页 */
 function renderRecords() {
     initRecordsMonth();
-
-    // 更新月份标签
     document.getElementById('records-month').textContent = formatMonth(state.recordsMonth);
-
-    // 渲染分类筛选标签
     renderFilterRow();
-
-    // 渲染记录列表
     renderRecordsList();
 }
 
-/** 渲染分类筛选标签 */
 function renderFilterRow() {
     const filterRow = document.getElementById('filter-row');
+    const allExpense = { key: 'all_expense', label: '📉 全部支出' };
+    const allIncome = { key: 'all_income', label: '📈 全部收入' };
+
     const filters = [
         { key: 'all', label: '全部' },
-        ...CATEGORIES.map(c => ({ key: c.name, label: c.icon + ' ' + c.name }))
+        allExpense,
+        ...EXPENSE_CATEGORIES.map(c => ({ key: 'expense:' + c.name, label: c.icon + ' ' + c.name })),
+        allIncome,
+        ...INCOME_CATEGORIES.map(c => ({ key: 'income:' + c.name, label: c.icon + ' ' + c.name })),
     ];
 
     filterRow.innerHTML = filters.map(f => `
@@ -521,23 +613,40 @@ function renderFilterRow() {
     });
 }
 
-/** 渲染记录列表 */
 function renderRecordsList() {
     const list = document.getElementById('records-list');
     const totalEl = document.getElementById('records-total-amount');
-    const expenses = loadExpenses();
+    const records = loadRecords();
 
     // 按月份筛选
-    let filtered = expenses.filter(e => e.date.startsWith(state.recordsMonth));
+    let filtered = records.filter(e => e.date.startsWith(state.recordsMonth));
 
     // 按分类筛选
-    if (state.recordsFilter !== 'all') {
-        filtered = filtered.filter(e => e.category1 === state.recordsFilter);
+    const filter = state.recordsFilter;
+    if (filter === 'all_expense') {
+        filtered = filtered.filter(e => e.type === 'expense');
+    } else if (filter === 'all_income') {
+        filtered = filtered.filter(e => e.type === 'income');
+    } else if (filter.startsWith('expense:')) {
+        const catName = filter.substring(8);
+        filtered = filtered.filter(e => e.type === 'expense' && e.category1 === catName);
+    } else if (filter.startsWith('income:')) {
+        const catName = filter.substring(7);
+        filtered = filtered.filter(e => e.type === 'income' && e.category1 === catName);
+    } else if (filter !== 'all') {
+        filtered = filtered.filter(e => e.category1 === filter);
     }
 
-    // 计算合计
-    const total = filtered.reduce((sum, e) => sum + e.amount, 0);
-    totalEl.textContent = formatAmount(total);
+    // 计算合计（分离收入支出）
+    const expenseTotal = filtered.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+    const incomeTotal = filtered.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
+    if (expenseTotal > 0 && incomeTotal > 0) {
+        totalEl.innerHTML = `支出 <span style="color:#F44336">${formatAmount(expenseTotal)}</span> | 收入 <span style="color:#4CAF50">${formatAmount(incomeTotal)}</span>`;
+    } else if (incomeTotal > 0) {
+        totalEl.innerHTML = `收入合计：<span style="color:#4CAF50">${formatAmount(incomeTotal)}</span>`;
+    } else {
+        totalEl.innerHTML = `支出合计：<span style="color:#F44336">${formatAmount(expenseTotal)}</span>`;
+    }
 
     if (filtered.length === 0) {
         list.innerHTML = `
@@ -555,13 +664,15 @@ function renderRecordsList() {
         grouped[e.date].push(e);
     });
 
-    // 按日期倒序排列
     const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
     let html = '';
     dates.forEach(date => {
         html += `<div class="date-group-header">📅 ${formatDate(date)}</div>`;
         grouped[date].forEach(e => {
+            const isIncome = e.type === 'income';
+            const sign = isIncome ? '+' : '-';
+            const cls = isIncome ? 'income' : 'expense';
             html += `
                 <div class="record-item">
                     <div class="record-icon">${getCategoryIcon(e.category1)}</div>
@@ -572,7 +683,7 @@ function renderRecordsList() {
                             ${e.note ? `<span>${e.note}</span>` : ''}
                         </div>
                     </div>
-                    <div class="record-amount">-${e.amount.toFixed(2)}</div>
+                    <div class="record-amount ${cls}">${sign}${e.amount.toFixed(2)}</div>
                     <button class="record-delete" data-id="${e.id}" title="删除">🗑️</button>
                 </div>
             `;
@@ -581,26 +692,20 @@ function renderRecordsList() {
 
     list.innerHTML = html;
 
-    // 绑定删除按钮
     list.querySelectorAll('.record-delete').forEach(btn => {
         btn.addEventListener('click', async (evt) => {
             evt.stopPropagation();
             const id = btn.dataset.id;
             const confirmed = await showConfirm('确定要删除这条记录吗？删除后无法恢复。');
             if (confirmed) {
-                deleteExpense(id);
+                deleteRecord(id);
                 showToast('🗑️ 已删除');
                 renderRecords();
-                // 如果当前在首页，也刷新首页
-                if (state.currentPage === 'records') {
-                    // 保持在账单页
-                }
             }
         });
     });
 }
 
-/** 切换月份 */
 function changeMonth(delta) {
     const [y, m] = state.recordsMonth.split('-').map(Number);
     const d = new Date(y, m - 1 + delta, 1);
@@ -612,143 +717,69 @@ function changeMonth(delta) {
 
 function renderStats() {
     const monthKey = state.recordsMonth || getMonthKey();
-    const expenses = loadExpenses();
+    const records = loadRecords();
 
     // 更新月份显示
     document.getElementById('stats-month').textContent = formatMonth(monthKey);
 
     // 筛选当月数据
-    const monthly = expenses.filter(e => e.date.startsWith(monthKey));
-    const total = monthly.reduce((sum, e) => sum + e.amount, 0);
+    const monthly = records.filter(e => e.date.startsWith(monthKey));
+    const monthlyIncome = monthly.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
+    const monthlyExpense = monthly.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+    const balance = monthlyIncome - monthlyExpense;
 
-    // 更新总支出
-    document.getElementById('stats-total').textContent = formatAmount(total);
+    // 收入/支出/结余概览
+    document.getElementById('stats-income').textContent = formatAmount(monthlyIncome);
+    document.getElementById('stats-expense').textContent = formatAmount(monthlyExpense);
+    const balEl = document.getElementById('stats-balance');
+    balEl.textContent = (balance >= 0 ? '+' : '') + formatAmount(balance);
+    balEl.className = 'stats-balance-value ' + (balance >= 0 ? 'positive' : 'negative');
 
-    if (total === 0) {
-        document.getElementById('chart-container').innerHTML = `
-            <div class="empty-state">
-                <div class="empty-icon">📊</div>
-                <div>本月暂无支出数据</div>
-            </div>`;
-        document.getElementById('ranking-list').innerHTML = '';
+    // 支出饼图
+    renderPieSection('expense-chart-container', 'expense-legend', 'expense-ranking',
+        monthly.filter(e => e.type === 'expense'), 'expense');
+
+    // 收入饼图
+    renderPieSection('income-chart-container', 'income-legend', 'income-ranking',
+        monthly.filter(e => e.type === 'income'), 'income');
+}
+
+function renderPieSection(containerId, legendId, rankingId, records, type) {
+    const container = document.getElementById(containerId);
+
+    if (records.length === 0) {
+        const label = type === 'income' ? '收入' : '支出';
+        container.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div>本月暂无${label}数据</div></div>`;
+        document.getElementById(rankingId).innerHTML = '';
         return;
     }
 
     // 按一级分类汇总
     const categorySum = {};
-    monthly.forEach(e => {
-        if (!categorySum[e.category1]) {
-            categorySum[e.category1] = 0;
-        }
+    records.forEach(e => {
+        if (!categorySum[e.category1]) categorySum[e.category1] = 0;
         categorySum[e.category1] += e.amount;
     });
 
-    // 排序
+    const total = records.reduce((sum, e) => sum + e.amount, 0);
     const sorted = Object.entries(categorySum).sort((a, b) => b[1] - a[1]);
 
-    // 绘制饼图
-    drawPieChart(sorted, total);
-
-    // 渲染排行榜
-    renderRanking(sorted, total);
-}
-
-/** 用 Canvas 绘制饼图 */
-function drawPieChart(sortedData, total) {
-    const canvas = document.getElementById('pie-chart');
-    const container = document.getElementById('chart-container');
-
-    // 恢复 canvas 容器结构
+    // 恢复容器结构
     container.innerHTML = `
-        <canvas id="pie-chart" width="280" height="280"></canvas>
-        <div class="chart-legend" id="chart-legend"></div>
+        <canvas width="280" height="280"></canvas>
+        <div class="chart-legend" id="${legendId}"></div>
     `;
 
-    const newCanvas = document.getElementById('pie-chart');
-    const legendEl = document.getElementById('chart-legend');
-    const ctx = newCanvas.getContext('2d');
-    const cx = 140, cy = 140, radius = 110;
+    const canvas = container.querySelector('canvas');
+    const legendEl = document.getElementById(legendId);
+    drawPieChart(canvas, sorted, total, type, legendEl);
 
-    // 清空画布
-    ctx.clearRect(0, 0, 280, 280);
-
-    let startAngle = -Math.PI / 2; // 从顶部开始
-
-    sortedData.forEach((entry, i) => {
-        const [name, amount] = entry;
-        const sliceAngle = (amount / total) * Math.PI * 2;
-        const color = CHART_COLORS[i % CHART_COLORS.length];
-
-        // 绘制扇形
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
-        ctx.closePath();
-        ctx.fillStyle = color;
-        ctx.fill();
-
-        // 扇形边框
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // 绘制百分比文字（在扇形中间）
-        const percent = ((amount / total) * 100).toFixed(1);
-        if (parseFloat(percent) >= 5) {
-            // 只在占比>=5%的扇形中显示文字
-            const midAngle = startAngle + sliceAngle / 2;
-            const textR = radius * 0.65;
-            const tx = cx + Math.cos(midAngle) * textR;
-            const ty = cy + Math.sin(midAngle) * textR;
-
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 12px -apple-system, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(percent + '%', tx, ty);
-        }
-
-        // 图例
-        const legendItem = document.createElement('div');
-        legendItem.className = 'legend-item';
-        legendItem.innerHTML = `
-            <span class="legend-dot" style="background:${color}"></span>
-            <span class="legend-name">${getCategoryIcon(name)} ${name}</span>
-            <span class="legend-percent">${percent}%</span>
-        `;
-        legendEl.appendChild(legendItem);
-
-        startAngle += sliceAngle;
-    });
-
-    // 中间白色圆形（甜甜圈效果）
-    ctx.beginPath();
-    ctx.arc(cx, cy, 55, 0, Math.PI * 2);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fill();
-    ctx.strokeStyle = '#F0F0F0';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // 中间总计文字
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 14px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('总支出', cx, cy - 8);
-    ctx.font = 'bold 16px -apple-system, sans-serif';
-    ctx.fillText(formatAmount(total), cx, cy + 12);
-}
-
-/** 渲染分类排行榜 */
-function renderRanking(sortedData, total) {
-    const list = document.getElementById('ranking-list');
-
-    list.innerHTML = sortedData.map((entry, i) => {
+    // 排行榜
+    const rankList = document.getElementById(rankingId);
+    rankList.innerHTML = sorted.map((entry, i) => {
         const [name, amount] = entry;
         const percent = ((amount / total) * 100).toFixed(1);
-        let rankClass = 'normal';
-        let rankIcon = (i + 1).toString();
+        let rankClass = 'normal', rankIcon = (i + 1).toString();
         if (i === 0) { rankClass = 'top1'; rankIcon = '🥇'; }
         else if (i === 1) { rankClass = 'top2'; rankIcon = '🥈'; }
         else if (i === 2) { rankClass = 'top3'; rankIcon = '🥉'; }
@@ -766,38 +797,103 @@ function renderRanking(sortedData, total) {
     }).join('');
 }
 
+function drawPieChart(canvas, sortedData, total, type, legendEl) {
+    const ctx = canvas.getContext('2d');
+    const cx = 140, cy = 140, radius = 110;
+    const colors = type === 'income' ? INCOME_CHART_COLORS : CHART_COLORS;
+
+    ctx.clearRect(0, 0, 280, 280);
+
+    let startAngle = -Math.PI / 2;
+
+    sortedData.forEach((entry, i) => {
+        const [name, amount] = entry;
+        const sliceAngle = (amount / total) * Math.PI * 2;
+        const color = colors[i % colors.length];
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        const percent = ((amount / total) * 100).toFixed(1);
+        if (parseFloat(percent) >= 5) {
+            const midAngle = startAngle + sliceAngle / 2;
+            const textR = radius * 0.65;
+            const tx = cx + Math.cos(midAngle) * textR;
+            const ty = cy + Math.sin(midAngle) * textR;
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(percent + '%', tx, ty);
+        }
+
+        const legendItem = document.createElement('div');
+        legendItem.className = 'legend-item';
+        legendItem.innerHTML = `
+            <span class="legend-dot" style="background:${color}"></span>
+            <span class="legend-name">${getCategoryIcon(name)} ${name}</span>
+            <span class="legend-percent">${percent}%</span>
+        `;
+        legendEl.appendChild(legendItem);
+
+        startAngle += sliceAngle;
+    });
+
+    // 中间甜甜圈
+    ctx.beginPath();
+    ctx.arc(cx, cy, 55, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.strokeStyle = '#F0F0F0';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 中间文字
+    const label = type === 'income' ? '总收入' : '总支出';
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 14px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy - 8);
+    ctx.font = 'bold 16px -apple-system, sans-serif';
+    ctx.fillText(formatAmount(total), cx, cy + 12);
+}
+
 // ==================== 事件绑定 ====================
 
-/** 底部导航点击 */
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-        const page = btn.dataset.page;
-        switchPage(page);
+        switchPage(btn.dataset.page);
     });
 });
 
-/** 数字键盘点击 */
 document.querySelectorAll('.numpad-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         handleNumpadKey(btn.dataset.key);
     });
 });
 
-/** 保存按钮 */
+// 收入/支出类型切换
+document.getElementById('type-toggle-expense').addEventListener('click', () => switchAddType('expense'));
+document.getElementById('type-toggle-income').addEventListener('click', () => switchAddType('income'));
+
 document.getElementById('save-btn').addEventListener('click', handleSave);
 
-/** 账单页月份切换 */
 document.getElementById('month-prev').addEventListener('click', () => changeMonth(-1));
 document.getElementById('month-next').addEventListener('click', () => changeMonth(1));
 
-/** 日期输入默认值 */
 document.getElementById('expense-date').value = getTodayKey();
 
-// ==================== 键盘支持（桌面端） ====================
+// 键盘支持（桌面端）
 document.addEventListener('keydown', (evt) => {
-    // 仅在记账页激活时处理
     if (state.currentPage !== 'add') return;
-
     const key = evt.key;
     if (key >= '0' && key <= '9') {
         handleNumpadKey(key);
@@ -814,9 +910,7 @@ document.addEventListener('keydown', (evt) => {
 // ==================== 初始化 ====================
 function init() {
     switchPage('home');
-    // 初始化账单页月份为当前月份
     state.recordsMonth = getMonthKey();
 }
 
-// 启动应用
 init();
