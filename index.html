@@ -210,11 +210,21 @@
                             </div>
                             <div class="custom-row">
                                 <label>⚡ 蛇的速度</label>
-                                <input type="range" id="custom-speed" min="50" max="200" value="120">
-                                <span class="custom-val" id="custom-speed-val">120</span>
+                                <input type="range" id="custom-speed" min="1" max="10" value="5">
+                                <span class="custom-val" id="custom-speed-val">5 级</span>
                             </div>
                             <button class="difficulty-btn custom-start" id="custom-start-btn">🎮 开始游戏</button>
                         </div>
+                    </div>
+                </div>
+
+                <!-- 暂停遮罩 -->
+                <div class="pause-overlay" id="pause-overlay">
+                    <div class="pause-box">
+                        <div class="pause-icon">⏸️</div>
+                        <div class="pause-title">游戏暂停</div>
+                        <button class="pause-btn resume-btn" id="pause-resume-btn">▶️ 继续游戏</button>
+                        <button class="pause-btn quit-btn" id="pause-quit-btn">🚪 退出游戏</button>
                     </div>
                 </div>
 

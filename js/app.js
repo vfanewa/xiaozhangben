@@ -874,44 +874,102 @@ function drawPieChart(canvas, sortedData, total, type, legendEl) {
 
 // ==================== 贪吃蛇游戏 ====================
 
-/** 难度预设 */
-const DIFFICULTY_PRESETS = {
-    easy: { label: '简单', obstacleCount: 8, speed: 160 },
-    normal: { label: '普通', obstacleCount: 20, speed: 120 },
-    hard: { label: '困难', obstacleCount: 40, speed: 80 },
+// ╔══════════════════════════════════════════════════════════╗
+// ║          🎮 游戏参数配置（修改这里来调整游戏）            ║
+// ╚══════════════════════════════════════════════════════════╝
+
+const SNAKE_CONFIG = {
+    // ---- 画布 ----
+    gridCount: 20,              // 网格数量（20×20），越大格子越小
+    maxCanvasSize: 500,         // 画布最大尺寸（像素）
+
+    // ---- 蛇 ----
+    snakeStartLength: 3,        // 蛇初始长度
+    snakeStartDirX: 1,          // 蛇初始方向 X（1=右, -1=左, 0=不动）
+    snakeStartDirY: 0,          // 蛇初始方向 Y（1=下, -1=上, 0=不动）
+
+    // ---- 食物 ----
+    foodScore: 10,              // 每吃一个食物加的分数
+    speedUpInterval: 50,        // 每增加多少分加一次速（每吃 N 个食物）
+    speedUpAmount: 10,          // 每次加速减少的间隔（毫秒），越小变化越平滑
+    minSpeed: 40,               // 最快速度限制（毫秒/步），防止快到没法玩
+
+    // ---- 障碍物 ----
+    obstacleProtectRadius: 3,   // 蛇出生点周围的保护范围（格子数），障碍物不会生成在这里
+    obstacleMaxAttempts: 20,    // 每个障碍物的最大尝试次数倍数（总数×此值=最多尝试次数）
+
+    // ---- 难度预设 ----
+    //  格式：{ label: '显示名', obstacleCount: 障碍物数, speed: 移动间隔(毫秒) }
+    //  注意：speed 是毫秒/步，值越小蛇越快！
+    presets: {
+        easy:   { label: '简单', obstacleCount: 8,  speed: 160 },
+        normal: { label: '普通', obstacleCount: 20, speed: 120 },
+        hard:   { label: '困难', obstacleCount: 40, speed: 80 },
+    },
+
+    // ---- 自定义难度默认值 ----
+    customDefaultObstacles: 20,  // 自定义障碍物默认数量
+    customDefaultSpeedLevel: 5,  // 自定义速度默认等级（1-10）
+
+    // ---- 颜色（可以按喜好修改） ----
+    bgColor: '#16213e',               // 画布背景色
+    gridColor: 'rgba(255, 255, 255, 0.03)',  // 网格线颜色
+    obstacleColor: '#555',            // 障碍物填充色
+    obstacleBorder: '#777',           // 障碍物边框色
+    obstacleXColor: 'rgba(255,255,255,0.15)',  // 障碍物 X 标记色
+    foodColor: '#FF3B30',             // 食物颜色
+    foodGlowColor: 'rgba(255, 50, 50, 0.3)',   // 食物光晕颜色
+    snakeHeadColor: '#4CAF50',        // 蛇头颜色
+    snakeHeadBorder: '#388E3C',       // 蛇头边框色
+    snakeEyeColor: '#fff',            // 蛇眼睛颜色
+    pauseOverlayColor: 'rgba(0, 0, 0, 0.6)',   // 暂停遮罩颜色
+    gameOverOverlayColor: 'rgba(0, 0, 0, 0.75)', // 结束遮罩颜色
 };
+
+// 从配置中解构常用值（方便后面直接使用）
+const DIFFICULTY_PRESETS = SNAKE_CONFIG.presets;
 
 const SnakeGame = {
     canvas: null,
     ctx: null,
-    gridCount: 20,
+    gridCount: SNAKE_CONFIG.gridCount,
     cellSize: 16,
     snake: [],
     food: { x: 0, y: 0 },
     obstacles: [],            // [{x, y}, ...] 随机障碍物
-    direction: { dx: 1, dy: 0 },
-    nextDirection: { dx: 1, dy: 0 },
+    direction: { dx: SNAKE_CONFIG.snakeStartDirX, dy: SNAKE_CONFIG.snakeStartDirY },
+    nextDirection: { dx: SNAKE_CONFIG.snakeStartDirX, dy: SNAKE_CONFIG.snakeStartDirY },
     score: 0,
     bestScore: 0,
     gameLoopId: null,
     difficulty: 'normal',    // 'easy' | 'normal' | 'hard' | 'custom'
-    obstacleCount: 20,       // 障碍物数量
-    baseSpeed: 120,          // 基础速度（毫秒/步），用于重置
-    speed: 120,
+    obstacleCount: SNAKE_CONFIG.customDefaultObstacles,
+    baseSpeed: DIFFICULTY_PRESETS.normal.speed,
+    speed: DIFFICULTY_PRESETS.normal.speed,
     isRunning: false,
     isPaused: false,
     gameStarted: false,      // 是否已选完难度并开始
     touchStartX: 0,
     touchStartY: 0,
 
-    /** 初始化画布大小和触摸事件 */
+    // ---- 速度等级换算 ----
+    //  用户选 1-10 级，等级越高蛇越快（间隔越小）
+    //  等级 1 = 200ms/步（慢），等级 10 = 50ms/步（快）
+    speedLevelToInterval(level) {
+        // 等级 1→200ms, 等级 5→120ms, 等级 10→50ms
+        return Math.round(200 - (level - 1) * (150 / 9));
+    },
+
+    /** 初始化画布大小和触摸事件（只执行一次，防止重复绑定事件） */
     init() {
+        if (this.initialized) return;
+
         this.canvas = document.getElementById('snake-canvas');
         this.ctx = this.canvas.getContext('2d');
 
         const container = document.querySelector('.game-container');
         const containerWidth = container.clientWidth - 20;
-        const size = Math.min(containerWidth, 380);
+        const size = Math.min(containerWidth, SNAKE_CONFIG.maxCanvasSize);
         this.canvas.width = size;
         this.canvas.height = size;
         this.cellSize = size / this.gridCount;
@@ -921,6 +979,9 @@ const SnakeGame = {
 
         this.bindTouchEvents();
         this.bindDifficultyEvents();
+        this.bindPauseEvents();
+
+        this.initialized = true;
     },
 
     /** 绑定难度选择事件 */
@@ -936,10 +997,8 @@ const SnakeGame = {
             btn.addEventListener('click', () => {
                 const diff = btn.dataset.difficulty;
                 if (diff === 'custom') {
-                    // 显示自定义面板
                     customPanel.style.display = 'block';
                 } else {
-                    // 直接用预设开始
                     const preset = DIFFICULTY_PRESETS[diff];
                     this.startWithDifficulty(diff, preset.obstacleCount, preset.speed);
                 }
@@ -948,19 +1007,30 @@ const SnakeGame = {
 
         // 自定义滑块 - 障碍物数量
         obstacleSlider.addEventListener('input', () => {
-            document.getElementById('custom-obstacles-val').textContent = obstacleSlider.value;
+            document.getElementById('custom-obstacles-val').textContent = obstacleSlider.value + ' 个';
         });
 
-        // 自定义滑块 - 速度
+        // 自定义滑块 - 速度等级（1-10级，越高越快）
         speedSlider.addEventListener('input', () => {
-            document.getElementById('custom-speed-val').textContent = speedSlider.value;
+            document.getElementById('custom-speed-val').textContent = speedSlider.value + ' 级';
         });
 
         // 自定义开始按钮
         customStartBtn.addEventListener('click', () => {
             const count = parseInt(obstacleSlider.value);
-            const spd = parseInt(speedSlider.value);
-            this.startWithDifficulty('custom', count, spd);
+            const level = parseInt(speedSlider.value);
+            const interval = this.speedLevelToInterval(level);
+            this.startWithDifficulty('custom', count, interval);
+        });
+    },
+
+    /** 绑定暂停画面按钮事件 */
+    bindPauseEvents() {
+        document.getElementById('pause-resume-btn').addEventListener('click', () => {
+            this.togglePause();
+        });
+        document.getElementById('pause-quit-btn').addEventListener('click', () => {
+            this.quitGame();
         });
     },
 
@@ -998,15 +1068,19 @@ const SnakeGame = {
     showDifficultyScreen() {
         this.gameStarted = false;
         this.isRunning = false;
+        this.isPaused = false;
+        this.snake = [];
+        this.obstacles = [];
         if (this.gameLoopId) {
             clearInterval(this.gameLoopId);
             this.gameLoopId = null;
         }
         document.getElementById('difficulty-overlay').classList.remove('hidden');
         document.getElementById('game-over-overlay').classList.remove('show');
+        document.getElementById('pause-overlay').classList.remove('show');
         document.getElementById('custom-settings').style.display = 'none';
         document.getElementById('snake-score').textContent = '0';
-        this.draw(); // 绘制空白画布
+        this.draw();
     },
 
     /** 以指定难度开始游戏 */
@@ -1037,18 +1111,17 @@ const SnakeGame = {
 
     /** 重置状态 */
     reset() {
-        this.direction = { dx: 1, dy: 0 };
-        this.nextDirection = { dx: 1, dy: 0 };
+        this.direction = { dx: SNAKE_CONFIG.snakeStartDirX, dy: SNAKE_CONFIG.snakeStartDirY };
+        this.nextDirection = { dx: SNAKE_CONFIG.snakeStartDirX, dy: SNAKE_CONFIG.snakeStartDirY };
         this.score = 0;
         this.speed = this.baseSpeed;
 
-        // 蛇初始位置：中间偏左，长度 3
+        // 蛇初始位置：中间偏左
         const mid = Math.floor(this.gridCount / 2);
-        this.snake = [
-            { x: mid, y: mid },
-            { x: mid - 1, y: mid },
-            { x: mid - 2, y: mid },
-        ];
+        this.snake = [];
+        for (let i = 0; i < SNAKE_CONFIG.snakeStartLength; i++) {
+            this.snake.push({ x: mid - i, y: mid });
+        }
 
         this.food = { x: 0, y: 0 };
         this.spawnFood();
@@ -1064,6 +1137,24 @@ const SnakeGame = {
             clearInterval(this.gameLoopId);
             this.gameLoopId = null;
         }
+    },
+
+    /** 切换暂停/继续 */
+    togglePause() {
+        if (!this.isRunning) return;
+        this.isPaused = !this.isPaused;
+        if (this.isPaused) {
+            document.getElementById('pause-overlay').classList.add('show');
+        } else {
+            document.getElementById('pause-overlay').classList.remove('show');
+        }
+        this.draw();
+    },
+
+    /** 退出当前游戏，返回难度选择 */
+    quitGame() {
+        document.getElementById('pause-overlay').classList.remove('show');
+        this.showDifficultyScreen();
     },
 
     /** 设置方向（防止反向） */
@@ -1095,11 +1186,12 @@ const SnakeGame = {
     spawnObstacles() {
         this.obstacles = [];
         const mid = Math.floor(this.gridCount / 2);
+        const radius = SNAKE_CONFIG.obstacleProtectRadius;
 
         // 保护区域：蛇出生点周围 + 蛇身
         const protected_ = new Set(this.snake.map(s => `${s.x},${s.y}`));
-        for (let dx = -3; dx <= 3; dx++) {
-            for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+            for (let dy = -radius; dy <= radius; dy++) {
                 const nx = mid + dx;
                 const ny = mid + dy;
                 if (nx >= 0 && nx < this.gridCount && ny >= 0 && ny < this.gridCount) {
@@ -1109,7 +1201,7 @@ const SnakeGame = {
         }
 
         let placed = 0;
-        const maxAttempts = this.obstacleCount * 20;
+        const maxAttempts = this.obstacleCount * SNAKE_CONFIG.obstacleMaxAttempts;
         let attempts = 0;
 
         while (placed < this.obstacleCount && attempts < maxAttempts) {
@@ -1158,12 +1250,12 @@ const SnakeGame = {
 
         // 吃到食物
         if (newHead.x === this.food.x && newHead.y === this.food.y) {
-            this.score += 10;
+            this.score += SNAKE_CONFIG.foodScore;
             document.getElementById('snake-score').textContent = this.score;
             this.spawnFood();
-            // 每吃 5 个食物加速
-            if (this.score % 50 === 0 && this.speed > 40) {
-                this.speed -= 10;
+            // 每吃一定分数加速
+            if (this.score % SNAKE_CONFIG.speedUpInterval === 0 && this.speed > SNAKE_CONFIG.minSpeed) {
+                this.speed -= SNAKE_CONFIG.speedUpAmount;
                 clearInterval(this.gameLoopId);
                 this.gameLoopId = setInterval(() => this.update(), this.speed);
             }
@@ -1177,6 +1269,7 @@ const SnakeGame = {
     /** 游戏结束处理 */
     handleGameOver() {
         this.stop();
+        document.getElementById('pause-overlay').classList.remove('show');
 
         if (this.score > this.bestScore) {
             this.bestScore = this.score;
@@ -1194,13 +1287,14 @@ const SnakeGame = {
     /** 绘制画布 */
     draw() {
         const { ctx, canvas, cellSize, gridCount, snake, food, obstacles } = this;
+        const C = SNAKE_CONFIG;
 
         // 背景
-        ctx.fillStyle = '#16213e';
+        ctx.fillStyle = C.bgColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // 网格线
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.strokeStyle = C.gridColor;
         ctx.lineWidth = 0.5;
         for (let i = 0; i <= gridCount; i++) {
             const pos = i * cellSize;
@@ -1215,14 +1309,12 @@ const SnakeGame = {
             const x = obs.x * cellSize;
             const y = obs.y * cellSize;
             const pad = 2;
-            ctx.fillStyle = '#555';
+            ctx.fillStyle = C.obstacleColor;
             ctx.fillRect(x + pad, y + pad, cellSize - pad * 2, cellSize - pad * 2);
-            // 边框发光
-            ctx.strokeStyle = '#777';
+            ctx.strokeStyle = C.obstacleBorder;
             ctx.lineWidth = 1;
             ctx.strokeRect(x + pad, y + pad, cellSize - pad * 2, cellSize - pad * 2);
-            // X 标记
-            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+            ctx.strokeStyle = C.obstacleXColor;
             ctx.lineWidth = 0.8;
             ctx.beginPath();
             ctx.moveTo(x + pad + 3, y + pad + 3);
@@ -1239,12 +1331,12 @@ const SnakeGame = {
 
         ctx.beginPath();
         ctx.arc(foodX, foodY, foodR + 3, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 50, 50, 0.3)';
+        ctx.fillStyle = C.foodGlowColor;
         ctx.fill();
 
         ctx.beginPath();
         ctx.arc(foodX, foodY, foodR, 0, Math.PI * 2);
-        ctx.fillStyle = '#FF3B30';
+        ctx.fillStyle = C.foodColor;
         ctx.fill();
 
         ctx.beginPath();
@@ -1262,9 +1354,9 @@ const SnakeGame = {
                 const headR = cellSize / 2 - pad;
                 ctx.beginPath();
                 ctx.arc(x + cellSize / 2, y + cellSize / 2, headR, 0, Math.PI * 2);
-                ctx.fillStyle = '#4CAF50';
+                ctx.fillStyle = C.snakeHeadColor;
                 ctx.fill();
-                ctx.strokeStyle = '#388E3C';
+                ctx.strokeStyle = C.snakeHeadBorder;
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
 
@@ -1291,10 +1383,10 @@ const SnakeGame = {
 
                 ctx.beginPath();
                 ctx.arc(eye1X, eye1Y, eyeR, 0, Math.PI * 2);
-                ctx.fillStyle = '#fff'; ctx.fill();
+                ctx.fillStyle = C.snakeEyeColor; ctx.fill();
                 ctx.beginPath();
                 ctx.arc(eye2X, eye2Y, eyeR, 0, Math.PI * 2);
-                ctx.fillStyle = '#fff'; ctx.fill();
+                ctx.fillStyle = C.snakeEyeColor; ctx.fill();
             } else {
                 const ratio = i / Math.max(snake.length - 1, 1);
                 const g = Math.floor(180 - ratio * 80);
@@ -1307,37 +1399,26 @@ const SnakeGame = {
                 ctx.fill();
             }
         });
-
-        // 暂停提示
-        if (this.isPaused) {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 24px -apple-system, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('⏸️ 已暂停', canvas.width / 2, canvas.height / 2);
-            ctx.textAlign = 'start';
-        }
     },
 };
 
 /** 贪吃蛇页面初始化（每次进入游戏Tab时调用） */
 function initSnakeGame() {
     SnakeGame.init();
-    SnakeGame.start(); // 显示难度选择界面
+    SnakeGame.start();
 }
 
 /** 贪吃蛇页面清理（离开时调用） */
 function stopSnakeGame() {
     SnakeGame.stop();
+    document.getElementById('pause-overlay').classList.remove('show');
 }
 
 // ==================== 贪吃蛇键盘事件 ====================
 
 document.addEventListener('keydown', (evt) => {
     if (state.currentPage !== 'game') return;
-    if (!SnakeGame.gameStarted || !SnakeGame.isRunning) return;
+    if (!SnakeGame.gameStarted || !SnakeGame.isRunning || SnakeGame.isPaused) return;
 
     const key = evt.key.toLowerCase();
 
@@ -1364,10 +1445,7 @@ document.addEventListener('keydown', (evt) => {
             break;
         case ' ':
             evt.preventDefault();
-            if (SnakeGame.isRunning) {
-                SnakeGame.isPaused = !SnakeGame.isPaused;
-                SnakeGame.draw();
-            }
+            SnakeGame.togglePause();
             break;
     }
 });
